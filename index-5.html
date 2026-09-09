@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+<title>Flappy Bird</title>
+
+<!-- Telegram WebApp -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-09PP8VH31Y"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-09PP8VH31Y');
+</script>
+
+<!-- Monetag SDK -->
+<script src="//libtl.com/sdk.js" data-zone="11757607" data-sdk="show_11757607"></script>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{width:100%;height:100%;overflow:hidden;background:#70c5ce;touch-action:none}
+body{font-family:Arial,Helvetica,sans-serif}
+#gameCanvas{display:block;position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:10}
+#ui{position:fixed;inset:0;z-index:10;pointer-events:none}
+#score{position:absolute;top:max(18px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);color:#fff;font-size:clamp(42px,12vw,72px);font-weight:900;line-height:1;text-shadow:3px 3px 0 #555,-1px -1px 0 #555,1px -1px 0 #555,-1px 1px 0 #555}
+#soundButton{position:absolute;top:max(15px,env(safe-area-inset-top));right:15px;width:48px;height:48px;border:3px solid rgba(255,255,255,.9);border-radius:50%;background:rgba(0,0,0,.25);color:#fff;font-size:23px;line-height:1;display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;box-shadow:0 3px 8px rgba(0,0,0,.25)}
+#soundButton:active{transform:scale(.92)}
+#message{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);width:min(88vw,360px);text-align:center;color:#fff;text-shadow:2px 2px 0 #555;pointer-events:none}
+#message h1{font-size:clamp(34px,10vw,54px);margin-bottom:12px;font-weight:900}
+#message p{font-size:clamp(16px,4.5vw,22px);font-weight:bold;line-height:1.5}
+
+/* Game-over card */
+#gameOver{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(88vw,340px);padding:24px 20px;border-radius:18px;background:rgba(255,255,255,.97);border:4px solid #555;box-shadow:0 10px 30px rgba(0,0,0,.25);text-align:center;color:#333;display:none;pointer-events:auto}
+#gameOver h2{font-size:34px;margin-bottom:16px;color:#e74c3c}
+.result{font-size:20px;margin:7px 0;font-weight:bold}
+#restart{margin-top:18px;width:100%;border:0;border-radius:12px;padding:13px 28px;background:#f5b400;color:#fff;font-size:19px;font-weight:900;box-shadow:0 4px 0 #c78d00;cursor:pointer;touch-action:manipulation}
+#restart:active{transform:translateY(3px);box-shadow:0 1px 0 #c78d00}
+#watchAd{margin-top:12px;width:100%;border:0;border-radius:12px;padding:13px 20px;background:#35a7f3;color:#fff;font-size:18px;font-weight:900;box-shadow:0 4px 0 #1978b8;cursor:pointer;touch-action:manipulation}
+#watchAd:active{transform:translateY(3px);box-shadow:0 1px 0 #1978b8}
+#watchAd:disabled{opacity:.65;cursor:default}
+#continueMessage{display:none;margin-top:12px;font-size:15px;font-weight:bold;color:#555}
+
+/* Advertisement footer slots */
+.ad-footer{position:fixed;left:50%;transform:translateX(-50%);z-index:5;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#monetag-welcome-banner{width:320px;height:50px;bottom:max(0px,env(safe-area-inset-bottom));display:flex}
+#monetag-gameover-banner{width:300px;height:250px;bottom:max(0px,env(safe-area-inset-bottom));display:none}
+.ad-slot{background:rgba(20,32,40,.90);border-radius:7px;color:#fff;box-shadow:0 3px 12px rgba(0,0,0,.28);overflow:hidden}
+.ad-slot-label{font-size:12px;font-weight:700;letter-spacing:.2px;opacity:.8}
+.ad-slot-sub{font-size:9px;opacity:.55;margin-top:2px}
+.ad-slot-inner{text-align:center;width:100%}
+
+/* This keeps the visible game area above the footer slots. */
+body.welcome-ad-active #gameCanvas{height:calc(100vh - 50px)}
+body.gameover-ad-active #gameCanvas{height:calc(100vh - 250px)}
+
+#telegramHint{position:absolute;bottom:max(12px,env(safe-area-inset-bottom));width:100%;text-align:center;color:rgba(255,255,255,.8);font-size:13px;font-weight:bold;text-shadow:1px 1px 2px #555}
+</style>
+</head>
+
+<body class="welcome-ad-active">
+
+<canvas id="gameCanvas"></canvas>
+
+<!-- Welcome-screen 320x50 slot -->
+<div id="monetag-welcome-banner" class="ad-footer ad-slot" aria-label="Advertisement">
+  <div class="ad-slot-inner">
+    <div class="ad-slot-label">ADVERTISEMENT</div>
+    <div class="ad-slot-sub">320 × 50</div>
+  </div>
+</div>
+
+<!-- Game-over 300x250 slot -->
+<div id="monetag-gameover-banner" class="ad-footer ad-slot" aria-label="Advertisement">
+  <div class="ad-slot-inner">
+    <div class="ad-slot-label">ADVERTISEMENT</div>
+    <div class="ad-slot-sub">300 × 250</div>
+  </div>
+</div>
+
+<div id="ui">
+  <div id="score">0</div>
+  <button id="soundButton" aria-label="Toggle sound">🔊</button>
+
+  <div id="message">
+    <h1>FLAPPY BIRD</h1>
+    <p>Tap the screen or press SPACE<br>to start</p>
+  </div>
+
+  <div id="gameOver">
+    <h2>GAME OVER</h2>
+    <div class="result">Score: <span id="finalScore">0</span></div>
+    <div class="result">Best: <span id="bestScore">0</span></div>
+    <button id="restart">PLAY AGAIN</button>
+    <button id="watchAd">📺 WATCH AD &amp; CONTINUE</button>
+    <div id="continueMessage">Loading rewarded ad...</div>
+  </div>
+
+  <div id="telegramHint">Tap to flap</div>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+/* ============================================================
+   TELEGRAM
+============================================================ */
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+if (tg) {
+  try {
+    tg.ready(); tg.expand();
+    if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+    if (tg.setHeaderColor) tg.setHeaderColor("#70c5ce");
+    if (tg.setBackgroundColor) tg.setBackgroundColor("#70c5ce");
+  } catch(e) {}
+}
+
+/* ============================================================
+   MONETAG
+   No previous advertising library is used.
+============================================================ */
+const monetagZone = "11757607";
+let monetagWelcomeTriggered = false;
+
+const welcomeAd = document.getElementById("monetag-welcome-banner");
+const gameoverAd = document.getElementById("monetag-gameover-banner");
+
+function setAdMode(mode) {
+  document.body.classList.remove("welcome-ad-active","gameover-ad-active");
+  welcomeAd.style.display = "none";
+  gameoverAd.style.display = "none";
+
+  if (mode === "welcome") {
+    document.body.classList.add("welcome-ad-active");
+    welcomeAd.style.display = "flex";
+  } else if (mode === "gameover") {
+    document.body.classList.add("gameover-ad-active");
+    gameoverAd.style.display = "flex";
+  }
+
+  resizeCanvas();
+}
+
+/*
+ * Exact user-supplied In-App Interstitial configuration.
+ *
+ * IMPORTANT:
+ * This is an In-App Interstitial, not an HTML 320x50 banner.
+ * Monetag controls its rendered ad UI; the 320x50 div above is
+ * the visual footer slot matching the requested layout.
+ */
+function triggerWelcomeMonetag() {
+  if (monetagWelcomeTriggered) return;
+  monetagWelcomeTriggered = true;
+
+  if (typeof window.show_11757607 === "function") {
+    try {
+      // In-App Interstitial
+      window.show_11757607({
+        type: 'inApp',
+        inAppSettings: {
+          frequency: 2,
+          capping: 0.1,
+          interval: 30,
+          timeout: 5,
+          everyPage: false
+        }
+      });
+    } catch (e) {
+      console.warn("Monetag welcome ad error:", e);
+    }
+  }
+}
+
+/*
+ * Exact user-supplied Rewarded Interstitial example.
+ * This function is kept available for the game-over reward flow.
+ */
+function showMonetagRewardedInterstitial() {
+  if (typeof window.show_11757607 !== "function") {
+    return Promise.reject(new Error("Monetag SDK is not ready."));
+  }
+
+  // Rewarded interstitial
+  return window.show_11757607().then(() => {
+    // User reward is granted by continueFromAd() below.
+  });
+}
+
+/* ============================================================
+   CANVAS
+============================================================ */
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d",{alpha:false});
+let W=360,H=640,dpr=1;
+
+/* ============================================================
+   UI
+============================================================ */
+const scoreElement=document.getElementById("score");
+const messageElement=document.getElementById("message");
+const gameOverElement=document.getElementById("gameOver");
+const finalScoreElement=document.getElementById("finalScore");
+const bestScoreElement=document.getElementById("bestScore");
+const restartButton=document.getElementById("restart");
+const watchAdButton=document.getElementById("watchAd");
+const continueMessage=document.getElementById("continueMessage");
+const soundButton=document.getElementById("soundButton");
+
+/* ============================================================
+   SOUND SYSTEM
+============================================================ */
+let soundEnabled=localStorage.getItem("flappy_sound")!=="off";
+let audioContext=null,noiseBuffer=null;
+
+function updateSoundButton(){soundButton.textContent=soundEnabled?"🔊":"🔇";}
+updateSoundButton();
+
+function initAudio(){
+  if(!soundEnabled)return;
+  if(!audioContext){
+    try{audioContext=new(window.AudioContext||window.webkitAudioContext)();}
+    catch(error){return;}
+  }
+  if(audioContext.state==="suspended")audioContext.resume().catch(()=>{});
+  createNoiseBuffer();
+}
+
+function createNoiseBuffer(){
+  if(!audioContext||noiseBuffer)return;
+  const duration=.35;
+  const buffer=audioContext.createBuffer(1,Math.floor(audioContext.sampleRate*duration),audioContext.sampleRate);
+  const data=buffer.getChannelData(0);
+  for(let i=0;i<data.length;i++)data[i]=Math.random()*2-1;
+  noiseBuffer=buffer;
+}
+
+function playFlapSound(){
+  if(!soundEnabled||!audioContext)return;
+  try{
+    const now=audioContext.currentTime;
+    const source=audioContext.createBufferSource();source.buffer=noiseBuffer;
+    const filter=audioContext.createBiquadFilter();filter.type="bandpass";
+    filter.frequency.setValueAtTime(1500,now);filter.frequency.exponentialRampToValueAtTime(700,now+.075);filter.Q.value=1.2;
+    const gain=audioContext.createGain();gain.gain.setValueAtTime(.0001,now);gain.gain.exponentialRampToValueAtTime(.20,now+.012);gain.gain.exponentialRampToValueAtTime(.0001,now+.085);
+    source.connect(filter);filter.connect(gain);gain.connect(audioContext.destination);source.start(now);source.stop(now+.09);
+    const oscillator=audioContext.createOscillator(),toneGain=audioContext.createGain();
+    oscillator.type="triangle";oscillator.frequency.setValueAtTime(650,now);oscillator.frequency.exponentialRampToValueAtTime(430,now+.065);
+    toneGain.gain.setValueAtTime(.0001,now);toneGain.gain.exponentialRampToValueAtTime(.075,now+.008);toneGain.gain.exponentialRampToValueAtTime(.0001,now+.075);
+    oscillator.connect(toneGain);toneGain.connect(audioContext.destination);oscillator.start(now);oscillator.stop(now+.08);
+  }catch(error){}
+}
+
+function playScoreSound(){
+  if(!soundEnabled||!audioContext)return;
+  try{
+    const now=audioContext.currentTime,osc=audioContext.createOscillator(),gain=audioContext.createGain();
+    osc.type="sine";osc.frequency.setValueAtTime(780,now);osc.frequency.exponentialRampToValueAtTime(1050,now+.10);
+    gain.gain.setValueAtTime(.0001,now);gain.gain.exponentialRampToValueAtTime(.11,now+.01);gain.gain.exponentialRampToValueAtTime(.0001,now+.13);
+    osc.connect(gain);gain.connect(audioContext.destination);osc.start(now);osc.stop(now+.14);
+  }catch(error){}
+}
+
+function playCollisionSound(){
+  if(!soundEnabled||!audioContext)return;
+  try{
+    const now=audioContext.currentTime,source=audioContext.createBufferSource();source.buffer=noiseBuffer;
+    const filter=audioContext.createBiquadFilter();filter.type="lowpass";filter.frequency.setValueAtTime(1000,now);filter.frequency.exponentialRampToValueAtTime(180,now+.30);
+    const gain=audioContext.createGain();gain.gain.setValueAtTime(.0001,now);gain.gain.exponentialRampToValueAtTime(.38,now+.012);gain.gain.exponentialRampToValueAtTime(.001,now+.32);
+    source.connect(filter);filter.connect(gain);gain.connect(audioContext.destination);source.start(now);source.stop(now+.34);
+    const osc=audioContext.createOscillator(),oscGain=audioContext.createGain();osc.type="sawtooth";
+    osc.frequency.setValueAtTime(170,now);osc.frequency.exponentialRampToValueAtTime(55,now+.30);
+    oscGain.gain.setValueAtTime(.0001,now);oscGain.gain.exponentialRampToValueAtTime(.18,now+.01);oscGain.gain.exponentialRampToValueAtTime(.0001,now+.32);
+    osc.connect(oscGain);oscGain.connect(audioContext.destination);osc.start(now);osc.stop(now+.34);
+  }catch(error){}
+}
+
+soundButton.addEventListener("pointerdown",event=>{
+  event.preventDefault();event.stopPropagation();
+  soundEnabled=!soundEnabled;
+  localStorage.setItem("flappy_sound",soundEnabled?"on":"off");
+  updateSoundButton();
+  if(soundEnabled){initAudio();playFlapSound();}
+});
+
+/* ============================================================
+   GAME STATE
+============================================================ */
+let state="ready",score=0,highScore=Number(localStorage.getItem("flappy_high_score"))||0,lastTime=0,animationId=null,continueCountdown=0,adIsShowing=false,collisionTimer=0;
+
+const bird={x:0,y:0,radius:17,velocity:0,rotation:0};
+const physics={gravity:1550,flapVelocity:-470,maxFallSpeed:720};
+const pipeConfig={width:64,gap:170,speed:190,spacing:235};
+const pipes=[];
+const ground={height:72,y:0,offset:0,speed:190};
+
+/* ============================================================
+   RESIZE
+============================================================ */
+function resizeCanvas(){
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  W=window.innerWidth;
+
+  /*
+   * The ad footer gets its own physical space.
+   * H is the actual game viewport height, so the canvas and
+   * ground are never hidden underneath the ad slot.
+   */
+  const footerHeight =
+    document.body.classList.contains("welcome-ad-active") ? 50 :
+    document.body.classList.contains("gameover-ad-active") ? 250 : 0;
+
+  H=Math.max(1, window.innerHeight-footerHeight);
+
+  canvas.width=Math.floor(W*dpr);
+  canvas.height=Math.floor(H*dpr);
+  canvas.style.width=W+"px";
+  canvas.style.height=H+"px";
+
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ground.y=H-ground.height;
+
+  if(bird.y>ground.y-bird.radius){
+    bird.y=ground.y-bird.radius;
+  }
+}
+
+/* ============================================================
+   HELPERS
+============================================================ */
+function random(min,max){return Math.random()*(max-min)+min}
+function updateScore(){scoreElement.textContent=score}
+function setBirdStartPosition(){bird.x=Math.min(W*.30,125);bird.y=H*.43;bird.velocity=0;bird.rotation=0}
+function resetPipes(){
+  pipes.length=0;
+  const firstX=W+100;
+  for(let i=0;i<5;i++)createPipe(firstX+i*pipeConfig.spacing);
+}
+function createPipe(x){
+  const minimumTop=85,minimumBottom=ground.height+85,availableHeight=H-minimumTop-minimumBottom;
+  const gap=Math.min(pipeConfig.gap,availableHeight-20);
+  const gapCenter=random(minimumTop+gap/2,H-minimumBottom-gap/2);
+  pipes.push({x,width:pipeConfig.width,gapTop:gapCenter-gap/2,gapBottom:gapCenter+gap/2,passed:false});
+}
+
+/* ============================================================
+   START
+============================================================ */
+function startGame(){
+  state="playing";
+  setAdMode("none");
+  resizeCanvas();
+  messageElement.style.display="none";
+  gameOverElement.style.display="none";
+  continueMessage.style.display="none";
+  score=0;updateScore();setBirdStartPosition();resetPipes();flap();
+}
+
+/* ============================================================
+   FLAP
+============================================================ */
+function flap(){
+  if(state==="ready"){startGame();return}
+  if(state!=="playing")return;
+  initAudio();bird.velocity=physics.flapVelocity;playFlapSound();
+}
+
+/* ============================================================
+   COLLISION
+============================================================ */
+function beginCollision(){
+  if(state!=="playing")return;
+  state="hit";playCollisionSound();bird.velocity=Math.max(150,bird.velocity);collisionTimer=.55;
+}
+
+function showGameOver(){
+  if(state!=="hit")return;
+  state="gameover";
+  if(score>highScore){highScore=score;localStorage.setItem("flappy_high_score",String(highScore))}
+  finalScoreElement.textContent=score;bestScoreElement.textContent=highScore;
+  continueMessage.style.display="none";watchAdButton.disabled=false;watchAdButton.textContent="📺 WATCH AD & CONTINUE";
+  gameOverElement.style.display="block";
+  setAdMode("gameover");
+  resizeCanvas();
+}
+
+/* ============================================================
+   NORMAL RESTART
+============================================================ */
+function restartGame(){
+  state="ready";score=0;updateScore();
+  gameOverElement.style.display="none";messageElement.style.display="block";continueMessage.style.display="none";
+  watchAdButton.disabled=false;watchAdButton.textContent="📺 WATCH AD & CONTINUE";
+  setAdMode("welcome");resizeCanvas();setBirdStartPosition();resetPipes();
+  triggerWelcomeMonetag();
+}
+
+/* ============================================================
+   MONETAG REWARDED AD
+   User-supplied Rewarded Popup example is included exactly in
+   the functional click path.
+============================================================ */
+async function watchRewardedAd(){
+  if(adIsShowing||state!=="gameover")return;
+  initAudio();
+
+  if(typeof window.show_11757607!=="function"){
+    continueMessage.textContent="Ad is not available right now.";
+    continueMessage.style.display="block";
+    return;
+  }
+
+  adIsShowing=true;watchAdButton.disabled=true;
+  continueMessage.textContent="Loading rewarded ad...";
+  continueMessage.style.display="block";
+
+  try{
+    /*
+      Rewarded Popup
+      show_11757607('pop').then(() => {
+        // user watch ad till the end or close it in interstitial format
+        // your code to reward user for rewarded format
+      }).catch(e => {
+        // user get error during playing ad
+        // do nothing or whatever you want
+      })
+    */
+    await window.show_11757607('pop');
+
+    /*
+     * Monetag resolves the promise when the rewarded popup flow
+     * is successfully completed/accepted by the SDK.
+     * Only then is the extra life granted.
+     */
+    continueFromAd();
+
+  }catch(error){
+    console.warn("Monetag rewarded ad was not completed:",error);
+    continueMessage.textContent="Watch the complete ad to continue.";
+    continueMessage.style.display="block";
+    watchAdButton.disabled=false;
+    watchAdButton.textContent="📺 WATCH AD & CONTINUE";
+    adIsShowing=false;
+  }
+}
+
+/* ============================================================
+   CONTINUE AFTER REWARDED AD
+============================================================ */
+function continueFromAd(){
+  updateScore();
+  gameOverElement.style.display="none";
+  messageElement.style.display="none";
+  continueMessage.style.display="none";
+  setAdMode("none");resizeCanvas();
+
+  bird.y=Math.max(bird.radius+20,Math.min(bird.y,ground.y-bird.radius-30));
+  bird.velocity=0;bird.rotation=0;
+  continueCountdown=1.0;state="continuing";adIsShowing=false;
+}
+
+/* ============================================================
+   INPUT
+============================================================ */
+function handleInput(event){
+  if(event)event.preventDefault();
+  initAudio();flap();
+}
+canvas.addEventListener("pointerdown",handleInput,{passive:false});
+
+document.addEventListener("keydown",event=>{
+  if(event.code==="Space"||event.code==="ArrowUp"||event.code==="Enter"){
+    event.preventDefault();initAudio();
+    if(state==="gameover"){restartGame();flap()}else{flap()}
+  }
+});
+
+/* ============================================================
+   BUTTONS
+============================================================ */
+restartButton.addEventListener("pointerdown",event=>{
+  event.preventDefault();event.stopPropagation();initAudio();startGame();
+});
+watchAdButton.addEventListener("pointerdown",event=>{
+  event.preventDefault();event.stopPropagation();watchRewardedAd();
+});
+
+/* ============================================================
+   COLLISION DETECTION
+============================================================ */
+function circleRectCollision(cx,cy,radius,rx,ry,rw,rh){
+  const nearestX=Math.max(rx,Math.min(cx,rx+rw)),nearestY=Math.max(ry,Math.min(cy,ry+rh));
+  const dx=cx-nearestX,dy=cy-nearestY;
+  return dx*dx+dy*dy<radius*radius;
+}
+function checkPipeCollision(pipe){
+  const topCollision=circleRectCollision(bird.x,bird.y,bird.radius,pipe.x,0,pipe.width,pipe.gapTop);
+  const bottomCollision=circleRectCollision(bird.x,bird.y,bird.radius,pipe.x,pipe.gapBottom,pipe.width,ground.y-pipe.gapBottom);
+  return topCollision||bottomCollision;
+}
+
+/* ============================================================
+   UPDATE
+============================================================ */
+function update(delta){
+  if(state==="continuing"){
+    continueCountdown-=delta;ground.offset+=ground.speed*delta*.15;
+    if(ground.offset>48)ground.offset-=48;
+    if(continueCountdown<=0){state="playing";bird.velocity=physics.flapVelocity*.72;playFlapSound()}
+    return;
+  }
+
+  if(state==="hit"){
+    bird.velocity+=physics.gravity*delta;bird.velocity=Math.min(bird.velocity,physics.maxFallSpeed);bird.y+=bird.velocity*delta;
+    bird.rotation=Math.min(1.5,bird.rotation+3.8*delta);collisionTimer-=delta;
+    if(collisionTimer<=0||bird.y>ground.y-bird.radius){bird.y=Math.min(bird.y,ground.y-bird.radius);showGameOver()}
+    return;
+  }
+
+  if(state!=="playing"){
+    ground.offset+=ground.speed*delta;if(ground.offset>48)ground.offset-=48;return;
+  }
+
+  bird.velocity+=physics.gravity*delta;bird.velocity=Math.min(bird.velocity,physics.maxFallSpeed);bird.y+=bird.velocity*delta;
+  bird.rotation=Math.max(-.45,Math.min(1.35,bird.velocity/600));
+
+  for(let i=0;i<pipes.length;i++){
+    const pipe=pipes[i];pipe.x-=pipeConfig.speed*delta;
+    if(!pipe.passed&&pipe.x+pipe.width<bird.x){pipe.passed=true;score++;updateScore();playScoreSound()}
+    if(checkPipeCollision(pipe)){beginCollision();return}
+  }
+
+  if(pipes.length>0&&pipes[0].x+pipes[0].width<-20){
+    pipes.shift();const lastPipe=pipes[pipes.length-1];
+    if(lastPipe)createPipe(lastPipe.x+pipeConfig.spacing);
+  }
+
+  if(bird.y-bird.radius<=0){bird.y=bird.radius;beginCollision();return}
+  if(bird.y+bird.radius>=ground.y){bird.y=ground.y-bird.radius;beginCollision();return}
+
+  ground.offset+=ground.speed*delta;if(ground.offset>48)ground.offset-=48;
+}
+
+/* ============================================================
+   DRAWING
+============================================================ */
+function drawSky(){
+  const gradient=ctx.createLinearGradient(0,0,0,H);
+  gradient.addColorStop(0,"#4ec9e0");gradient.addColorStop(.7,"#8de0eb");gradient.addColorStop(1,"#b7edf2");
+  ctx.fillStyle=gradient;ctx.fillRect(0,0,W,H);
+}
+function drawCloud(x,y,scale=1){
+  ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);ctx.fillStyle="rgba(255,255,255,.72)";ctx.beginPath();
+  ctx.arc(0,8,18,0,Math.PI*2);ctx.arc(23,2,25,0,Math.PI*2);ctx.arc(50,10,18,0,Math.PI*2);ctx.rect(0,8,50,20);ctx.fill();ctx.restore();
+}
+function drawClouds(time){
+  const movement=(time*.008)%(W+220);
+  drawCloud(((120-movement)+(W+220))%(W+220)-100,H*.17,.9);
+  drawCloud(((W*.7-movement*.65)+(W+250))%(W+250)-120,H*.29,.65);
+  drawCloud(((W*.25-movement*.4)+(W+300))%(W+300)-130,H*.11,.5);
+}
+function drawPipes(){for(const pipe of pipes)drawPipe(pipe.x,pipe.width,pipe.gapTop,pipe.gapBottom)}
+function drawPipe(x,width,gapTop,gapBottom){
+  const capHeight=25,capExtra=7;
+  drawPipeBody(x,0,width,gapTop);drawPipeCap(x-capExtra,gapTop-capHeight,width+capExtra*2,capHeight);
+  drawPipeBody(x,gapBottom,width,ground.y-gapBottom);drawPipeCap(x-capExtra,gapBottom,width+capExtra*2,capHeight);
+}
+function drawPipeBody(x,y,width,height){
+  if(height<=0)return;
+  const gradient=ctx.createLinearGradient(x,0,x+width,0);
+  gradient.addColorStop(0,"#2e8b25");gradient.addColorStop(.18,"#65c84a");gradient.addColorStop(.45,"#49b637");gradient.addColorStop(.75,"#2e8b25");gradient.addColorStop(1,"#1f711d");
+  ctx.fillStyle=gradient;ctx.fillRect(x,y,width,height);ctx.fillStyle="rgba(255,255,255,.18)";ctx.fillRect(x+width*.16,y,width*.12,height);
+  ctx.strokeStyle="#246d1d";ctx.lineWidth=3;ctx.strokeRect(x,y,width,height);
+}
+function drawPipeCap(x,y,width,height){
+  if(height<=0)return;
+  const gradient=ctx.createLinearGradient(x,0,x+width,0);
+  gradient.addColorStop(0,"#287c20");gradient.addColorStop(.2,"#6bd14f");gradient.addColorStop(.48,"#50bd3c");gradient.addColorStop(.78,"#2b8b24");gradient.addColorStop(1,"#1e681b");
+  ctx.fillStyle=gradient;ctx.fillRect(x,y,width,height);ctx.fillStyle="rgba(255,255,255,.18)";ctx.fillRect(x+width*.14,y,width*.11,height);
+  ctx.strokeStyle="#246d1d";ctx.lineWidth=3;ctx.strokeRect(x,y,width,height);
+}
+function drawBird(){
+  ctx.save();ctx.translate(bird.x,bird.y);ctx.rotate(bird.rotation);
+  ctx.beginPath();ctx.ellipse(0,3,bird.radius+2,bird.radius-1,0,0,Math.PI*2);ctx.fillStyle="rgba(0,0,0,.18)";ctx.fill();
+  const bodyGradient=ctx.createLinearGradient(-18,-18,18,18);
+  bodyGradient.addColorStop(0,"#fff85c");bodyGradient.addColorStop(.55,"#ffd92f");bodyGradient.addColorStop(1,"#f1a900");
+  ctx.beginPath();ctx.arc(0,0,bird.radius,0,Math.PI*2);ctx.fillStyle=bodyGradient;ctx.fill();ctx.strokeStyle="#c98b00";ctx.lineWidth=2;ctx.stroke();
+  ctx.save();const wingAnimation=Math.sin(performance.now()*.028);ctx.rotate(wingAnimation*.18);
+  ctx.beginPath();ctx.ellipse(-7,5,12,7,-.25,0,Math.PI*2);ctx.fillStyle="#f4c51d";ctx.fill();ctx.strokeStyle="#c98b00";ctx.lineWidth=2;ctx.stroke();ctx.restore();
+  ctx.beginPath();ctx.arc(7,-7,6.5,0,Math.PI*2);ctx.fillStyle="#fff";ctx.fill();ctx.strokeStyle="#333";ctx.lineWidth=1.5;ctx.stroke();
+  ctx.beginPath();ctx.arc(9,-7,2.8,0,Math.PI*2);ctx.fillStyle="#111";ctx.fill();
+  ctx.beginPath();ctx.moveTo(12,0);ctx.lineTo(29,5);ctx.lineTo(12,10);ctx.closePath();ctx.fillStyle="#f28c18";ctx.fill();ctx.strokeStyle="#a95c0d";ctx.lineWidth=2;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(13,5);ctx.lineTo(25,5);ctx.strokeStyle="#9c570b";ctx.lineWidth=1;ctx.stroke();ctx.restore();
+}
+function drawGround(){
+  const y=ground.y;
+  ctx.fillStyle="#77c043";ctx.fillRect(0,y,W,14);ctx.fillStyle="#4e9f32";ctx.fillRect(0,y+11,W,7);ctx.fillStyle="#d7a24b";ctx.fillRect(0,y+18,W,H-y-18);
+  const tile=48;
+  for(let x=-tile+(ground.offset%tile);x<W+tile;x+=tile){
+    ctx.fillStyle="#c58d3f";ctx.beginPath();ctx.moveTo(x,y+20);ctx.lineTo(x+18,y+20);ctx.lineTo(x+9,y+30);ctx.closePath();ctx.fill();
+    ctx.fillStyle="#e5b762";ctx.beginPath();ctx.arc(x+30,y+40,5,0,Math.PI*2);ctx.fill();
+  }
+  ctx.fillStyle="#86cf48";ctx.fillRect(0,y,W,5);
+}
+function render(time){drawSky();drawClouds(time);drawPipes();drawBird();drawGround();}
+
+/* ============================================================
+   GAME LOOP
+============================================================ */
+function gameLoop(timestamp){
+  if(!lastTime)lastTime=timestamp;
+  let delta=(timestamp-lastTime)/1000;lastTime=timestamp;delta=Math.min(delta,.033);
+  update(delta);render(timestamp);animationId=requestAnimationFrame(gameLoop);
+}
+
+/* ============================================================
+   INITIALIZATION
+============================================================ */
+window.addEventListener("resize",resizeCanvas);
+window.addEventListener("orientationchange",()=>setTimeout(resizeCanvas,100));
+
+resizeCanvas();
+setBirdStartPosition();
+resetPipes();
+updateScore();
+setAdMode("welcome");
+
+/* Give the Monetag SDK a moment to expose show_11757607. */
+setTimeout(triggerWelcomeMonetag,1200);
+
+animationId=requestAnimationFrame(gameLoop);
+})();
+</script>
+</body>
+</html>
