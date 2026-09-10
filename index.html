@@ -34,7 +34,7 @@ body{font-family:Arial,Helvetica,sans-serif}
 #message p{font-size:clamp(16px,4.5vw,22px);font-weight:bold;line-height:1.5}
 
 /* Game-over card */
-#gameOver{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(88vw,340px);padding:24px 20px;border-radius:18px;background:rgba(255,255,255,.97);border:4px solid #555;box-shadow:0 10px 30px rgba(0,0,0,.25);text-align:center;color:#333;display:none;pointer-events:auto}
+#gameOver{position:fixed;left:50%;top:calc((100vh - 250px) / 2);transform:translate(-50%,-50%);width:min(88vw,340px);padding:24px 20px;border-radius:18px;background:rgba(255,255,255,.97);border:4px solid #555;box-shadow:0 10px 30px rgba(0,0,0,.25);text-align:center;color:#333;display:none;pointer-events:auto}
 #gameOver h2{font-size:34px;margin-bottom:16px;color:#e74c3c}
 .result{font-size:20px;margin:7px 0;font-weight:bold}
 #restart{margin-top:18px;width:100%;border:0;border-radius:12px;padding:13px 28px;background:#f5b400;color:#fff;font-size:19px;font-weight:900;box-shadow:0 4px 0 #c78d00;cursor:pointer;touch-action:manipulation}
@@ -48,12 +48,10 @@ body{font-family:Arial,Helvetica,sans-serif}
 .ad-footer{position:fixed;left:50%;transform:translateX(-50%);z-index:5;display:flex;align-items:center;justify-content:center;pointer-events:none}
 #monetag-welcome-banner{width:320px;height:50px;bottom:max(0px,env(safe-area-inset-bottom));display:flex}
 #monetag-gameover-banner{width:300px;height:250px;bottom:max(0px,env(safe-area-inset-bottom));display:none}
-.ad-slot{background:rgba(20,32,40,.90);border-radius:7px;color:#fff;box-shadow:0 3px 12px rgba(0,0,0,.28);overflow:hidden}
-.ad-slot-label{font-size:12px;font-weight:700;letter-spacing:.2px;opacity:.8}
-.ad-slot-sub{font-size:9px;opacity:.55;margin-top:2px}
-.ad-slot-inner{text-align:center;width:100%}
+.ad-slot{background:transparent;border-radius:0;color:inherit;overflow:hidden}
+.ad-slot-inner{text-align:center;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
 
-/* This keeps the visible game area above the footer slots. */
+/* The canvas reserves footer space; the Game Over card is centered in that same available area. */
 body.welcome-ad-active #gameCanvas{height:calc(100vh - 50px)}
 body.gameover-ad-active #gameCanvas{height:calc(100vh - 250px)}
 
@@ -67,18 +65,12 @@ body.gameover-ad-active #gameCanvas{height:calc(100vh - 250px)}
 
 <!-- Welcome-screen 320x50 slot -->
 <div id="monetag-welcome-banner" class="ad-footer ad-slot" aria-label="Advertisement">
-  <div class="ad-slot-inner">
-    <div class="ad-slot-label">ADVERTISEMENT</div>
-    <div class="ad-slot-sub">320 × 50</div>
-  </div>
+  <div class="ad-slot-inner" id="monetag-welcome-mount" aria-hidden="true"></div>
 </div>
 
 <!-- Game-over 300x250 slot -->
 <div id="monetag-gameover-banner" class="ad-footer ad-slot" aria-label="Advertisement">
-  <div class="ad-slot-inner">
-    <div class="ad-slot-label">ADVERTISEMENT</div>
-    <div class="ad-slot-sub">300 × 250</div>
-  </div>
+  <div class="ad-slot-inner" id="monetag-gameover-mount" aria-hidden="true"></div>
 </div>
 
 <div id="ui">
@@ -124,6 +116,16 @@ if (tg) {
    No previous advertising library is used.
 ============================================================ */
 const monetagZone = "11757607";
+
+/*
+ * Zone 11757607 is the Telegram rewarded-ad SDK zone. Monetag
+ * documents Telegram Mini Apps as supporting Rewarded Interstitial,
+ * Rewarded Popup and In-App Interstitial formats; it is not a
+ * 300x250/320x50 in-page banner tag. Therefore these footer mounts
+ * are kept as layout slots and are NOT populated with a fake ad or
+ * a Direct Link/Popunder. A real banner requires a separate Monetag
+ * banner zone/tag from the publisher dashboard.
+ */
 
 const welcomeAd = document.getElementById("monetag-welcome-banner");
 const gameoverAd = document.getElementById("monetag-gameover-banner");
@@ -417,30 +419,6 @@ async function watchRewardedAd(){
 /* ============================================================
    CONTINUE AFTER REWARDED AD
 ============================================================ */
-function moveUpcomingPipesToSafeDistance(){
-  const safeDistance = 300;
-  let nearest = null;
-
-  for(const pipe of pipes){
-    const pipeRight = pipe.x + pipe.width;
-    if(pipeRight >= bird.x && (!nearest || pipe.x < nearest.x)){
-      nearest = pipe;
-    }
-  }
-
-  if(!nearest) return;
-
-  const requiredLeft = bird.x + safeDistance;
-  if(nearest.x < requiredLeft){
-    const shift = requiredLeft - nearest.x;
-    for(const pipe of pipes){
-      if(pipe === nearest || pipe.x >= nearest.x){
-        pipe.x += shift;
-      }
-    }
-  }
-}
-
 function continueFromAd(){
   updateScore();
   gameOverElement.style.display="none";
@@ -451,10 +429,24 @@ function continueFromAd(){
   bird.y=Math.max(bird.radius+20,Math.min(bird.y,ground.y-bird.radius-30));
   bird.velocity=0;bird.rotation=0;
 
-  /* Give the revived bird at least 300px of horizontal space before
-     the next active pipe. Score and pipe identities are preserved. */
-  moveUpcomingPipesToSafeDistance();
-  continueCountdown=1.0;state="continuing";adIsShowing=false;
+  /*
+   * IMPORTANT REVIVE FIX:
+   * Completely discard every old pipe. This prevents old pipe objects
+   * from overlapping with newly generated pipes after a rewarded revive.
+   * The first new pipe is deliberately placed 400px in front of the bird.
+   */
+  pipes.length=0;
+  const firstRevivePipeX = bird.x + 400;
+  createPipe(firstRevivePipeX);
+
+  /* Keep the normal spacing for subsequent pipes. */
+  for(let i=1;i<5;i++){
+    createPipe(firstRevivePipeX + i * pipeConfig.spacing);
+  }
+
+  continueCountdown=1.0;
+  state="continuing";
+  adIsShowing=false;
 }
 
 /* ============================================================
