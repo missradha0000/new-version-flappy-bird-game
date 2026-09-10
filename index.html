@@ -124,11 +124,16 @@ if (tg) {
    No previous advertising library is used.
 ============================================================ */
 const monetagZone = "11757607";
-let monetagWelcomeTriggered = false;
 
 const welcomeAd = document.getElementById("monetag-welcome-banner");
 const gameoverAd = document.getElementById("monetag-gameover-banner");
 
+/*
+ * IMPORTANT SAFETY RULE:
+ * No Monetag ad is triggered automatically.
+ * There is deliberately NO in-app interstitial call here.
+ * Gameplay never calls Monetag.
+ */
 function setAdMode(mode) {
   document.body.classList.remove("welcome-ad-active","gameover-ad-active");
   welcomeAd.style.display = "none";
@@ -146,49 +151,18 @@ function setAdMode(mode) {
 }
 
 /*
- * Exact user-supplied In-App Interstitial configuration.
- *
- * IMPORTANT:
- * This is an In-App Interstitial, not an HTML 320x50 banner.
- * Monetag controls its rendered ad UI; the 320x50 div above is
- * the visual footer slot matching the requested layout.
+ * Monetag Rewarded Interstitial ONLY.
+ * Do NOT use show_11757607('pop') here: Monetag documents Rewarded
+ * Popup as an offer-page flow, while Rewarded Interstitial is the
+ * format intended for a user-watched reward ad in Telegram Mini Apps.
+ * The promise must resolve before the game grants the extra life.
  */
-function triggerWelcomeMonetag() {
-  if (monetagWelcomeTriggered) return;
-  monetagWelcomeTriggered = true;
-
-  if (typeof window.show_11757607 === "function") {
-    try {
-      // In-App Interstitial
-      window.show_11757607({
-        type: 'inApp',
-        inAppSettings: {
-          frequency: 2,
-          capping: 0.1,
-          interval: 30,
-          timeout: 5,
-          everyPage: false
-        }
-      });
-    } catch (e) {
-      console.warn("Monetag welcome ad error:", e);
-    }
-  }
-}
-
-/*
- * Exact user-supplied Rewarded Interstitial example.
- * This function is kept available for the game-over reward flow.
- */
-function showMonetagRewardedInterstitial() {
+function showMonetagRewardedVideo() {
   if (typeof window.show_11757607 !== "function") {
-    return Promise.reject(new Error("Monetag SDK is not ready."));
+    return Promise.reject(new Error("Monetag Rewarded Video SDK is not ready."));
   }
 
-  // Rewarded interstitial
-  return window.show_11757607().then(() => {
-    // User reward is granted by continueFromAd() below.
-  });
+  return Promise.resolve(window.show_11757607());
 }
 
 /* ============================================================
@@ -396,7 +370,6 @@ function restartGame(){
   gameOverElement.style.display="none";messageElement.style.display="block";continueMessage.style.display="none";
   watchAdButton.disabled=false;watchAdButton.textContent="📺 WATCH AD & CONTINUE";
   setAdMode("welcome");resizeCanvas();setBirdStartPosition();resetPipes();
-  triggerWelcomeMonetag();
 }
 
 /* ============================================================
@@ -405,52 +378,69 @@ function restartGame(){
    the functional click path.
 ============================================================ */
 async function watchRewardedAd(){
-  if(adIsShowing||state!=="gameover")return;
+  if(adIsShowing || state !== "gameover") return;
+
   initAudio();
 
-  if(typeof window.show_11757607!=="function"){
-    continueMessage.textContent="Ad is not available right now.";
-    continueMessage.style.display="block";
+  if(typeof window.show_11757607 !== "function"){
+    continueMessage.textContent = "Rewarded video is not available right now.";
+    continueMessage.style.display = "block";
     return;
   }
 
-  adIsShowing=true;watchAdButton.disabled=true;
-  continueMessage.textContent="Loading rewarded ad...";
-  continueMessage.style.display="block";
+  adIsShowing = true;
+  watchAdButton.disabled = true;
+  continueMessage.textContent = "Loading rewarded video...";
+  continueMessage.style.display = "block";
 
-  try{
+  try {
     /*
-      Rewarded Popup
-      show_11757607('pop').then(() => {
-        // user watch ad till the end or close it in interstitial format
-        // your code to reward user for rewarded format
-      }).catch(e => {
-        // user get error during playing ad
-        // do nothing or whatever you want
-      })
-    */
-    await window.show_11757607('pop');
-
-    /*
-     * Monetag resolves the promise when the rewarded popup flow
-     * is successfully completed/accepted by the SDK.
-     * Only then is the extra life granted.
+     * Official Monetag Rewarded Interstitial call.
+     * No pop/direct-link/SmartLink call is used.
+     * No window.open/window.location navigation exists in this file.
+     * The game grants the reward only after the SDK promise resolves.
      */
+    await showMonetagRewardedVideo();
+
     continueFromAd();
 
-  }catch(error){
-    console.warn("Monetag rewarded ad was not completed:",error);
-    continueMessage.textContent="Watch the complete ad to continue.";
-    continueMessage.style.display="block";
-    watchAdButton.disabled=false;
-    watchAdButton.textContent="📺 WATCH AD & CONTINUE";
-    adIsShowing=false;
+  } catch(error) {
+    console.warn("Monetag rewarded video was not completed:", error);
+    continueMessage.textContent = "Watch the complete rewarded video to continue.";
+    continueMessage.style.display = "block";
+    watchAdButton.disabled = false;
+    watchAdButton.textContent = "📺 WATCH AD & CONTINUE";
+    adIsShowing = false;
   }
 }
 
 /* ============================================================
    CONTINUE AFTER REWARDED AD
 ============================================================ */
+function moveUpcomingPipesToSafeDistance(){
+  const safeDistance = 300;
+  let nearest = null;
+
+  for(const pipe of pipes){
+    const pipeRight = pipe.x + pipe.width;
+    if(pipeRight >= bird.x && (!nearest || pipe.x < nearest.x)){
+      nearest = pipe;
+    }
+  }
+
+  if(!nearest) return;
+
+  const requiredLeft = bird.x + safeDistance;
+  if(nearest.x < requiredLeft){
+    const shift = requiredLeft - nearest.x;
+    for(const pipe of pipes){
+      if(pipe === nearest || pipe.x >= nearest.x){
+        pipe.x += shift;
+      }
+    }
+  }
+}
+
 function continueFromAd(){
   updateScore();
   gameOverElement.style.display="none";
@@ -460,6 +450,10 @@ function continueFromAd(){
 
   bird.y=Math.max(bird.radius+20,Math.min(bird.y,ground.y-bird.radius-30));
   bird.velocity=0;bird.rotation=0;
+
+  /* Give the revived bird at least 300px of horizontal space before
+     the next active pipe. Score and pipe identities are preserved. */
+  moveUpcomingPipesToSafeDistance();
   continueCountdown=1.0;state="continuing";adIsShowing=false;
 }
 
@@ -629,8 +623,6 @@ resetPipes();
 updateScore();
 setAdMode("welcome");
 
-/* Give the Monetag SDK a moment to expose show_11757607. */
-setTimeout(triggerWelcomeMonetag,1200);
 
 animationId=requestAnimationFrame(gameLoop);
 })();
